@@ -1,75 +1,190 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MaterialIcons } from '@expo/vector-icons';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+type Task = {
+  id: string;
+  title: string;
+  completed: boolean;
+};
 
 export default function HomeScreen() {
+  const [task, setTask] = useState('');
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  // LOAD TASKS (AsyncStorage)
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  async function loadTasks() {
+    const data = await AsyncStorage.getItem('TASKS');
+    if (data) {
+      setTasks(JSON.parse(data));
+    }
+  }
+
+  async function saveTasks(updatedTasks: Task[]) {
+    setTasks(updatedTasks);
+    await AsyncStorage.setItem('TASKS', JSON.stringify(updatedTasks));
+  }
+
+  function handleAddTask() {
+    if (task.trim() === '') return;
+
+    const newTask: Task = {
+      id: Date.now().toString(),
+      title: task,
+      completed: false,
+    };
+
+    const updated = [...tasks, newTask];
+    saveTasks(updated);
+    setTask('');
+  }
+
+  function toggleTask(id: string) {
+    const updated = tasks.map((item) =>
+      item.id === id
+        ? { ...item, completed: !item.completed }
+        : item
+    );
+
+    saveTasks(updated);
+  }
+
+  function deleteTask(id: string) {
+    const updated = tasks.filter((item) => item.id !== id);
+    saveTasks(updated);
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <View style={styles.container}>
+      {/* HEADER */}
+      <View style={headerStyles.header}>
+        <Text style={headerStyles.title}>TaskFlow</Text>
+      </View>
+
+      {/* INPUT */}
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter Task"
+          value={task}
+          onChangeText={setTask}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+
+        <TouchableOpacity style={styles.addButton} onPress={handleAddTask}>
+          <MaterialIcons name="add" size={22} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* TASK LIST */}
+      {tasks.map((item) => (
+        <View key={item.id} style={styles.taskRow}>
+          {/* TOGGLE CHECKBOX */}
+          <TouchableOpacity onPress={() => toggleTask(item.id)}>
+            <MaterialIcons
+              name={
+                item.completed
+                  ? 'check-box'
+                  : 'check-box-outline-blank'
+              }
+              size={20}
+              color={item.completed ? '#2E5BBA' : '#5A6472'}
+            />
+          </TouchableOpacity>
+
+          {/* TEXT */}
+          <Text
+            style={[
+              styles.taskText,
+              item.completed && styles.completedText,
+            ]}
+          >
+            {item.title}
+          </Text>
+
+          {/* DELETE BUTTON */}
+          <TouchableOpacity onPress={() => deleteTask(item.id)}>
+            <MaterialIcons name="delete" size={20} color="#E74C3C" />
+          </TouchableOpacity>
+        </View>
+      ))}
+    </View>
   );
 }
 
+/* HEADER STYLE */
+const headerStyles = StyleSheet.create({
+  header: {
+    paddingTop: 50,
+    paddingBottom: 16,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1F2A44',
+  },
+});
+
+/* MAIN STYLE */
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+  },
+
+  inputRow: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    marginRight: 10,
+  },
+
+  addButton: {
+    backgroundColor: '#2E5BBA',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+
+  taskText: {
+    fontSize: 15,
+    flex: 1,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+
+  completedText: {
+    textDecorationLine: 'line-through',
+    color: '#999',
   },
 });
