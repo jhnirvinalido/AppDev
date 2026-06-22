@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
+import { supabase } from '@/lib/supabase';
 
 type Task = {
   id: string;
@@ -19,50 +19,70 @@ export default function HomeScreen() {
   const [task, setTask] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // LOAD TASKS (AsyncStorage)
+  // LOAD TASKS (READ)
   useEffect(() => {
     loadTasks();
   }, []);
 
   async function loadTasks() {
-    const data = await AsyncStorage.getItem('TASKS');
-    if (data) {
-      setTasks(JSON.parse(data));
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.log('Load error:', error.message);
+      return;
     }
+
+    setTasks(data || []);
   }
 
-  async function saveTasks(updatedTasks: Task[]) {
-    setTasks(updatedTasks);
-    await AsyncStorage.setItem('TASKS', JSON.stringify(updatedTasks));
-  }
-
-  function handleAddTask() {
+  // CREATE TASK
+  async function addTask() {
     if (task.trim() === '') return;
 
-    const newTask: Task = {
-      id: Date.now().toString(),
-      title: task,
-      completed: false,
-    };
+    const { error } = await supabase
+      .from('tasks')
+      .insert([{ title: task, completed: false }]);
 
-    const updated = [...tasks, newTask];
-    saveTasks(updated);
+    if (error) {
+      console.log('Add error:', error.message);
+      return;
+    }
+
     setTask('');
+    loadTasks();
   }
 
-  function toggleTask(id: string) {
-    const updated = tasks.map((item) =>
-      item.id === id
-        ? { ...item, completed: !item.completed }
-        : item
-    );
+  // TOGGLE COMPLETE (UPDATE)
+  async function toggleTask(item: Task) {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ completed: !item.completed })
+      .eq('id', item.id);
 
-    saveTasks(updated);
+    if (error) {
+      console.log('Update error:', error.message);
+      return;
+    }
+
+    loadTasks();
   }
 
-  function deleteTask(id: string) {
-    const updated = tasks.filter((item) => item.id !== id);
-    saveTasks(updated);
+  // DELETE TASK
+  async function deleteTask(id: string) {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.log('Delete error:', error.message);
+      return;
+    }
+
+    loadTasks();
   }
 
   return (
@@ -81,26 +101,29 @@ export default function HomeScreen() {
           onChangeText={setTask}
         />
 
-        <TouchableOpacity style={styles.addButton} onPress={handleAddTask}>
+        <TouchableOpacity style={styles.addButton} onPress={addTask}>
           <MaterialIcons name="add" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
 
       {/* TASK LIST */}
       {tasks.map((item) => (
-        <View key={item.id} style={styles.taskRow}>
-          {/* TOGGLE CHECKBOX */}
-          <TouchableOpacity onPress={() => toggleTask(item.id)}>
-            <MaterialIcons
-              name={
-                item.completed
-                  ? 'check-box'
-                  : 'check-box-outline-blank'
-              }
-              size={20}
-              color={item.completed ? '#2E5BBA' : '#5A6472'}
-            />
-          </TouchableOpacity>
+        <TouchableOpacity
+          key={item.id}
+          onPress={() => toggleTask(item)}
+          onLongPress={() => deleteTask(item.id)}
+          style={styles.taskRow}
+        >
+          {/* CHECKBOX */}
+          <MaterialIcons
+            name={
+              item.completed
+                ? 'check-box'
+                : 'check-box-outline-blank'
+            }
+            size={20}
+            color={item.completed ? '#2E5BBA' : '#5A6472'}
+          />
 
           {/* TEXT */}
           <Text
@@ -112,17 +135,15 @@ export default function HomeScreen() {
             {item.title}
           </Text>
 
-          {/* DELETE BUTTON */}
-          <TouchableOpacity onPress={() => deleteTask(item.id)}>
-            <MaterialIcons name="delete" size={20} color="#E74C3C" />
-          </TouchableOpacity>
-        </View>
+          {/* DELETE ICON (optional visual hint) */}
+          <MaterialIcons name="delete" size={18} color="#E74C3C" />
+        </TouchableOpacity>
       ))}
     </View>
   );
 }
 
-/* HEADER STYLE */
+/* HEADER */
 const headerStyles = StyleSheet.create({
   header: {
     paddingTop: 50,
@@ -139,7 +160,7 @@ const headerStyles = StyleSheet.create({
   },
 });
 
-/* MAIN STYLE */
+/* MAIN */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
