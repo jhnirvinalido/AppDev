@@ -3,8 +3,9 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
+  Alert,
+  Pressable,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
@@ -19,153 +20,189 @@ export default function HomeScreen() {
   const [task, setTask] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // LOAD TASKS (READ)
-  useEffect(() => {
-    loadTasks();
-  }, []);
-
-  async function loadTasks() {
+  // =========================
+  // LOAD TASKS
+  // =========================
+  const loadTasks = async () => {
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.log('Load error:', error.message);
+      console.log('LOAD ERROR:', error.message);
+      Alert.alert('Load Error', error.message);
       return;
     }
 
-    setTasks(data || []);
-  }
+    setTasks(data ?? []);
+  };
 
-  // CREATE TASK
-  async function addTask() {
-    if (task.trim() === '') return;
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  // =========================
+  // ADD TASK
+  // =========================
+  const addTask = async () => {
+    if (!task.trim()) {
+      Alert.alert('Error', 'Task cannot be empty');
+      return;
+    }
 
     const { error } = await supabase
       .from('tasks')
       .insert([{ title: task, completed: false }]);
 
     if (error) {
-      console.log('Add error:', error.message);
+      console.log('ADD ERROR:', error.message);
+      Alert.alert('Add failed', error.message);
       return;
     }
 
     setTask('');
     loadTasks();
-  }
+  };
 
-  // TOGGLE COMPLETE (UPDATE)
-  async function toggleTask(item: Task) {
+  // =========================
+  // TOGGLE TASK
+  // =========================
+  const toggleTask = async (item: Task) => {
     const { error } = await supabase
       .from('tasks')
       .update({ completed: !item.completed })
       .eq('id', item.id);
 
     if (error) {
-      console.log('Update error:', error.message);
+      console.log('UPDATE ERROR:', error.message);
+      Alert.alert('Update failed', error.message);
       return;
     }
 
     loadTasks();
-  }
+  };
 
-  // DELETE TASK
-  async function deleteTask(id: string) {
-    const { error } = await supabase
+  // =========================
+  // DELETE TASK (IMPORTANT FIX)
+  // =========================
+  const deleteTask = async (id: string) => {
+    console.log('🗑 DELETE REQUEST:', id);
+
+    const { data, error } = await supabase
       .from('tasks')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select(); // IMPORTANT: verifies delete
 
     if (error) {
-      console.log('Delete error:', error.message);
+      console.log('❌ DELETE ERROR:', error.message);
+      Alert.alert('Delete failed', error.message);
       return;
     }
 
-    loadTasks();
-  }
+    console.log('✅ DELETE SUCCESS DATA:', data);
 
+    if (!data || data.length === 0) {
+      Alert.alert(
+        'Delete blocked',
+        'No row deleted. Check Supabase RLS policy.'
+      );
+      return;
+    }
+
+    Alert.alert('Success', 'Task deleted successfully');
+    loadTasks();
+  };
+
+  // =========================
+  // CONFIRM POPUP
+  // =========================
+  const confirmDelete = (id: string) => {
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteTask(id),
+        },
+      ]
+    );
+  };
+
+  // =========================
+  // UI
+  // =========================
   return (
     <View style={styles.container}>
-      {/* HEADER */}
-      <View style={headerStyles.header}>
-        <Text style={headerStyles.title}>TaskFlow</Text>
-      </View>
+      <Text style={styles.header}>TaskFlow</Text>
 
       {/* INPUT */}
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="Enter Task"
           value={task}
           onChangeText={setTask}
+          placeholder="Enter Task"
         />
 
-        <TouchableOpacity style={styles.addButton} onPress={addTask}>
-          <MaterialIcons name="add" size={22} color="#fff" />
-        </TouchableOpacity>
+        <Pressable style={styles.addBtn} onPress={addTask}>
+          <MaterialIcons name="add" size={30} color="white" />
+        </Pressable>
       </View>
 
-      {/* TASK LIST */}
+      {/* LIST */}
       {tasks.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          onPress={() => toggleTask(item)}
-          onLongPress={() => deleteTask(item.id)}
-          style={styles.taskRow}
-        >
-          {/* CHECKBOX */}
-          <MaterialIcons
-            name={
-              item.completed
-                ? 'check-box'
-                : 'check-box-outline-blank'
-            }
-            size={20}
-            color={item.completed ? '#2E5BBA' : '#5A6472'}
-          />
+        <View key={item.id} style={styles.taskRow}>
+          
+          {/* TOGGLE */}
+          <Pressable onPress={() => toggleTask(item)}>
+            <MaterialIcons
+              name={item.completed ? 'check-box' : 'check-box-outline-blank'}
+              size={26}
+              color="#2E5BBA"
+            />
+          </Pressable>
 
-          {/* TEXT */}
-          <Text
-            style={[
-              styles.taskText,
-              item.completed && styles.completedText,
-            ]}
-          >
+          {/* TITLE */}
+          <Text style={[styles.taskText, item.completed && styles.done]}>
             {item.title}
           </Text>
 
-          {/* DELETE ICON (optional visual hint) */}
-          <MaterialIcons name="delete" size={18} color="#E74C3C" />
-        </TouchableOpacity>
+          {/* DELETE BUTTON (BIG + CLICK EFFECT) */}
+          <Pressable
+            onPress={() => confirmDelete(item.id)}
+            style={({ pressed, hovered }) => [
+              styles.deleteBtn,
+              hovered && styles.deleteHover,
+              pressed && styles.deletePressed,
+            ]}
+          >
+            <MaterialIcons name="delete" size={26} color="white" />
+          </Pressable>
+        </View>
       ))}
     </View>
   );
 }
 
-/* HEADER */
-const headerStyles = StyleSheet.create({
-  header: {
-    paddingTop: 50,
-    paddingBottom: 16,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1F2A44',
-  },
-});
-
-/* MAIN */
+// =========================
+// STYLES
+// =========================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+    padding: 20,
     backgroundColor: '#fff',
+  },
+
+  header: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 20,
   },
 
   inputRow: {
@@ -177,15 +214,15 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 10,
+    padding: 12,
     marginRight: 10,
   },
 
-  addButton: {
+  addBtn: {
     backgroundColor: '#2E5BBA',
-    borderRadius: 8,
-    paddingHorizontal: 16,
+    padding: 12,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -193,19 +230,36 @@ const styles = StyleSheet.create({
   taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderColor: '#eee',
   },
 
   taskText: {
-    fontSize: 15,
     flex: 1,
+    fontSize: 17,
+    marginLeft: 10,
   },
 
-  completedText: {
+  done: {
     textDecorationLine: 'line-through',
     color: '#999',
+  },
+
+  // DELETE BUTTON
+  deleteBtn: {
+    backgroundColor: '#E74C3C',
+    padding: 12,
+    borderRadius: 12,
+  },
+
+  deleteHover: {
+    backgroundColor: '#ff6b6b',
+    transform: [{ scale: 1.1 }],
+  },
+
+  deletePressed: {
+    transform: [{ scale: 0.9 }],
+    opacity: 0.6,
   },
 });
